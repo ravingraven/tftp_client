@@ -19,7 +19,7 @@ import socket
 import struct
 
 class TftpClientGui:
-    """TFTP Client GUI class"""
+    """TFTP Client GUI class. We use this to draw and handle the GUI"""
 
     def __init__(self, master, tftpComm):
         """Create the GUI"""
@@ -50,6 +50,7 @@ class TftpClientGui:
         master.title("TFTP Client")
 
         # Create all the elements of the GUI (labels, buttons, progress bar etc.)
+        # USe the grid system as the GUI is fairly simple
         self.hostLabel = Label(master, text="Host")
         self.hostLabel.grid(sticky="W", row=1, column=1, padx=5, pady=5)
 
@@ -107,28 +108,39 @@ class TftpClientGui:
 
     def loadConfiguration(self, config):
         """Load configuration from configuration file"""
+        # Read the configuration from the ini file
         self.config.read('config.ini')
+
+        # Get the values from the ini and set them to the GUI (use fallbacks)
         self.hostIpStr.set(self.config.get('gui', 'ip', fallback=''))
         self.portStr.set(self.config.get('gui', 'port', fallback=''))
         self.localFileStr.set(self.config.get('gui', 'localFile', fallback=''))
         self.remoteFileStr.set(self.config.get('gui', 'remoteFile', fallback=''))
-        self.timeoutStr.set(self.config.get('gui', 'timeout', fallback=''))
+        self.timeoutStr.set(self.config.get('gui', 'timeout', fallback='10000')) # Fallback for timeout is 10s
 
     def getTftp(self):
         """Perform get command"""
-        self.setGui(False)
+        # Check the timeout value
+        timeout, ignore = self.tryParseFloat(self.timeoutStr.get())
+
+        if timeout is None:
+            self.setGui(NORMAL)
+            messagebox.showerror("Input Error", "Invalid timeout value")
+            return
+
+        self.setGui(DISABLED)
         self.tftpComm.transferTftp(self.hostTextInput.get().strip(),
                                    self.portTextInput.get().strip(),
                                    self.remoteFileTextInput.get().strip(),
                                    self.localFileTextInput.get().strip(),
-                                   int(self.timeoutStr.get()),
+                                   timeout,
                                    True,
                                    self.progressBar,
                                    self.doneCallback)
 
     def putTftp(self):
         """Perform put command"""
-        self.setGui(False)
+        self.setGui(DISABLED)
         self.tftpComm.transferTftp(self.hostTextInput.get().strip(),
                                    self.portTextInput.get().strip(),
                                    self.remoteFileTextInput.get().strip(),
@@ -139,12 +151,12 @@ class TftpClientGui:
                                    self.doneCallback)
 
     def doneCallback(self, nPackets, bytesLastPacket, fileSize):
-        """Call this function to clean up the GUI after a transfer and record statistics"""
+        """Call this function to unlock the GUI after a transfer and record statistics"""
         # Unlock the GUI
-        self.setGui(True)
+        self.setGui(NORMAL)
 
         # Show the user a message
-        messagebox.showinfo("Last transmission statistics", "Packets sent: " + str(nPackets) + "\n" + "Last packet size: " + str(bytesLastPacket) + "\n" + "File size: " + str(fileSize) + "\n")
+        messagebox.showinfo("Last transmission statistics", "Packets: " + str(nPackets) + "\n" + "Last packet size: " + str(bytesLastPacket) + "\n" + "File size: " + str(fileSize) + "\n")
 
         # Read the configuration
         self.config.read('config.ini')
@@ -171,8 +183,8 @@ class TftpClientGui:
 
     def showStatistics(self):
         """Show statistics"""
-        self.config.read('config.ini')
-        messagebox.showinfo("Statistics", "Packets sent: " + self.config.get('statistics', 'last_nPackets', fallback='0') + "\n"
+        self.config.read('config.ini') # Read existing historical data from ini file and show it
+        messagebox.showinfo("Statistics", "Packets: " + self.config.get('statistics', 'last_nPackets', fallback='0') + "\n"
                                         + "Last packet size: " + self.config.get('statistics', 'last_bytesLastPacket', fallback='0') + " bytes\n"
                                         + "File size: " + self.config.get('statistics', 'last_fileSize', fallback='0') + "\n\n"
                                         + "Total packets transferred: " + self.config.get('statistics', 'historic_nPackets', fallback='0') + "\n"
@@ -191,11 +203,12 @@ class TftpClientGui:
 
     def portStringCallback(self, *args):
         """Limits the size of the port string to 5 chars and saves the configuration"""
-        if len(root.globalgetvar(args[0])) > 5:
-            root.globalsetvar(args[0], (root.globalgetvar(args[0])[:5])) # 5 is the max port string lenght
+        if len(root.globalgetvar(args[0])) > 5: # Limit to 5 chars
+            root.globalsetvar(args[0], (root.globalgetvar(args[0])[:5])) # 5 is the max port string length
         self.writeConfig(self.config, 'gui', 'port', self.portStr.get())
 
     def localFileStrCallback(self, *args):
+        """Callback for when changing the local file input. Just writes to the configuration"""
         self.writeConfig(self.config, 'gui', 'localFile', self.localFileStr.get())
 
     def remoteFileStrCallback(self, *args):
@@ -228,42 +241,23 @@ class TftpClientGui:
         except:
             return(None, False)
 
-    def setGui(self, enable):
-        """Set the GUI state"""
-        if enable:
-            self.enableGui()
-        else:
-            self.disableGui()
 
-
-    def disableGui(self):
-        """Disable the GUI when transfers happen"""
-        self.hostTextInput.config(state=DISABLED)
-        self.portTextInput.config(state=DISABLED)
-        self.localFileTextInput.config(state=DISABLED)
-        self.localFileSelectButton.config(state=DISABLED)
-        self.remoteFileTextInput.config(state=DISABLED)
-        self.timeoutTextInput.config(state=DISABLED)
-        self.getButton.config(state=DISABLED)
-        self.putButton.config(state=DISABLED)
-        self.statisticsButton.config(state=DISABLED)
-
-    def enableGui(self):
-        """Enable the GUI after being disabled"""
-        self.hostTextInput.config(state=NORMAL)
-        self.portTextInput.config(state=NORMAL)
-        self.localFileTextInput.config(state=NORMAL)
-        self.localFileSelectButton.config(state=NORMAL)
-        self.remoteFileTextInput.config(state=NORMAL)
-        self.timeoutTextInput.config(state=NORMAL)
-        self.getButton.config(state=NORMAL)
-        self.putButton.config(state=NORMAL)
-        self.statisticsButton.config(state=NORMAL)
+    def setGui(self, setState):
+        """Set the gui state to the state passed as an argument"""
+        self.hostTextInput.config(state=setState)
+        self.portTextInput.config(state=setState)
+        self.localFileTextInput.config(state=setState)
+        self.localFileSelectButton.config(state=setState)
+        self.remoteFileTextInput.config(state=setState)
+        self.timeoutTextInput.config(state=setState)
+        self.getButton.config(state=setState)
+        self.putButton.config(state=setState)
+        self.statisticsButton.config(state=setState)
 
 
 class TftpComm:
     """TFTP Communication class. A thread is used to read or write files asynchronously from the GUI"""
-    # TFTP command opcodes
+    # TFTP command opcodes and useful byte values
     READ = bytes([0x00, 0x01])
     WRITE = bytes([0x00, 0x02])
     DATA = bytes([0x00, 0x03])
@@ -286,9 +280,11 @@ class TftpComm:
         filehandle.close()
 
     def transferTftp(self, ip, port, remoteFilename, localFilename, timeout, read, progressBar, doneCallback):
-        """Sanitize input and perform the TFTP transfer"""
+        """Sanitize input and perform the TFTP transfer. Connection arguments are passed along down the line.
+           Returns nothing. Thread is responsible for closing passed resources"""
         try:
             ipaddress.ip_address(ip)
+        # Show possible errors to the user
         except ValueError:
             messagebox.showerror("Input error", ip + " is not a valid IP")
             return
@@ -296,57 +292,65 @@ class TftpComm:
             messagebox.showerror("Error", str(e))
             return
 
+        # Set file options for either reading or writing
         if read:
             fileOptions = "wb"
         else:
             fileOptions = "rb"
 
+        # Open file
         filehandle = open(localFilename, fileOptions)
 
         # print(''.join(['\\x%02x' % b for b in message])) # Use this to print bytes in hex
 
-        self.stopTransfer = False
+        self.stopTransfer = False # Set the stop lambda to false
+
+        # Setup and start the thread
         thread = threading.Thread(target=self.transferThread, args = [ip, port, remoteFilename, filehandle, timeout, read, lambda: self.stopTransfer, progressBar, doneCallback])
         thread.start()
 
     def breakTftp(self):
-        self.stopTransfer = True # Trigger a lambda to stop the ongoing thread
+        """Break an ongoing TFTP actioon via the stopTransfer() lambda. This should always work unless the thread is
+           in some kind of socket timeout"""
+        self.stopTransfer = True  # Trigger a lambda to stop the ongoing thread
 
     def sendMessage(self, sock, message, server):
+        """Send message (data) to socket"""
         sock.sendto(message, server)
 
     def sendDataStateMachine(self, ip, port, remoteFilename, filehandle, timeout, stop, progressBar, doneCallback):
         """This state machine handles sending data to the server. Sending is simple compared to receiving. It is
            two steps: Sending a request and waiting for an ACK and sending a block and waiting for an ACK. What is
-           important here is to keep the connection open after sending all the data to wait for the final ACK"""
+           important here is to keep the connection open after sending all the data to wait for the final ACK.
+           Pass server connection strings, local and remote file
+           information, a connection timeout, a lambda function used to stop the machine, a Tkinter progressBar object
+           and a callback to be called on end as an argument. Does not return anything and takes care of closing
+           any passed or open resources"""
+
+        # Init the state machine
+        state = "send_request"
+        expectedBlockNumber = 0
+
+        # Handle the progress bar
+        size = self.getFilesize(filehandle)
+        progressBar.mode = "determinate"
+        progressBar["value"] = 0
+        progressBar["maximum"] = int(size / 512)
+
+        # Initialise statistics counters
+        nPackets = 0
+        bytesLastPacket = 0
+        fileSize = 0
+
         try:
             # Open a connection to the server and prime the socket
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # Create UDP socket
             sock.settimeout(timeout/1000)
 
-            # Init the state machine
-            state = "send_request"
-            firstBlock = True
-            lastBlock = False
-            expectedBlockNumber = 0
-
-            # Handle the progress bar
-            size = self.getFilesize(filehandle)
-            progressBar.mode = "determinate"
-            progressBar["value"] = 0
-            progressBar["maximum"] = int(size/512)
-
-            # Initialise statistics counters
-            nPackets = 0
-            bytesLastPacket = 0
-            fileSize = 0
-
             # Break if stopped from the outside
             while stop() == False:
 
                 if state == "send_request":
-                    firstBlock = True
-                    lastBlock = False
                     expectedBlockNumber = 0
                     retries = 0
                     # Break if stopped from the outside
@@ -419,38 +423,41 @@ class TftpComm:
         except socket.error as e:
             messagebox.showerror("Error", "Connection error: " + e.args[0])
         except self.TftpException as e:
-            messagebox.showerror("Error", "TFTP error: " + e.args[0])
+            messagebox.showerror("Error", e.args[0])
         except Exception as e:
             messagebox.showerror("Error", "An error has occurred during transfer: " + str(e))
         finally:
-            print("closing")
             sock.close()
             doneCallback(nPackets, bytesLastPacket, fileSize)
             return
 
 
     def acceptDataStateMachine(self, ip, port, remoteFilename, filehandle, timeout, stop, progressBar, doneCallback):
-        """State machine used to accept data from the server"""
+        """State machine used to accept data from the server. Pass server connection strings, local and remote file
+           information, a connection timeout, a lambda function used to stop the machine, a Tkinter progressBar object
+           and a callback to be called on end as an argument. Does not return anything and takes care of closing
+           any passed or open resources"""
         retries = 0
+        # Handle progress bar
+        progressBar.mode = "indeterminate"
+        progressBar.start(10)
+
+        # Init the state machine
+        state = "send_request"
+        firstBlock = True
+        lastBlockReceived = False
+        expectedBlockNumber = 1
+
+        # Initialise statistics counters
+        nPackets = 0
+        bytesLastPacket = 0
+
+        fileSize = 0
+
         try:
             # Open a connection to the server and prime the socket
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # Create UDP socket
             sock.settimeout(timeout/1000)
-
-            # Handle progress bar
-            progressBar.mode = "indeterminate"
-            progressBar.start(10)
-
-            # Init the state machine
-            state = "send_request"
-            firstBlock = True
-            lastBlockReceived = False
-            expectedBlockNumber = 1
-
-            # Initialise statistics counters
-            nPackets = 0
-            bytesLastPacket = 0
-            fileSize = 0
 
             while stop() == False:
 
@@ -476,6 +483,7 @@ class TftpComm:
                         if retries < self.MAX_RECEIVE_RETRIES:
                             retries += 1
 
+                            # Either go back to the start or keep waiting for an ack in case of an error
                             if firstBlock:
                                 state = "send_request"
                             else:
@@ -486,6 +494,7 @@ class TftpComm:
 
                     expectedBlockNumber += 1
 
+                    # Parse incoming data
                     if (data[0:2] == self.DATA) and (data[2:4] == struct.pack(">H", expectedBlockNumber)):
                         filehandle.write(data[4:]) # Write to file
 
@@ -501,7 +510,8 @@ class TftpComm:
                         continue
 
                     elif data[0:2] == self.ERROR:
-                        messagebox.showerror("Server error", "The server has communicated the following error: Code: " + str(int(data[2:4])) + "Message: " + str(data[4:]))
+                        # Error, show it to the user
+                        messagebox.showerror("Server error", "The server has communicated the following error: Code: " + self.decodeErrorMessage(data))
                         break
                     elif firstBlock:
                         state = "send_request"
@@ -510,13 +520,13 @@ class TftpComm:
                     continue
 
                 elif state == "send_ack":
-                    # Create and send an ACK package TODO: Make a function for this
-
+                    # Create and send an ACK package
                     try:
                         self.sendMessage(sock, self.ACK + struct.pack(">H", expectedBlockNumber), server)
                     except:
                         continue
 
+                    # First block was received
                     firstBlock = False
 
                     if lastBlockReceived:
@@ -540,6 +550,8 @@ class TftpComm:
             return
 
     def waitForAck(self, sock, expectedBlockNumber):
+        """Waits and handles an incoming TFTP ACK. Pass a connected and valid socket as well as the expected block
+           number contained in the ACK as an argument. Returns a tuple of a success value and a server ip/port tuple"""
         # Wait for an ACK
         try:
             data, server = sock.recvfrom(1024)
@@ -556,23 +568,31 @@ class TftpComm:
                 return False, server
 
         elif data[0:2] == self.ERROR:
-            # TODO: The following does not work as expected because of byte parsing
-            raise self.TftpException(str(data[2:4]) + "Message: " + str(data[4:]))
+            raise self.TftpException("The server has communicated the following error: Code: " + self.decodeErrorMessage(data))
         else:
             return False, server
 
 
     def createReadRequest(self, filename, method):
+        """Creates a TFTP read request message. Pass the method as an argument"""
         return self.READ + filename.encode('ascii') + self.NULLTERM + method.encode('ascii') + self.NULLTERM
 
     def createWriteRequest(self, filename, method):
+        """Creates a TFTP write request message. Pass the method as an argument"""
         return self.WRITE + filename.encode('ascii') + self.NULLTERM + method.encode('ascii') + self.NULLTERM
 
     def getFilesize(self, filehandle):
-        filehandle.seek(0,2) # move the cursor to the end of the file
-        size = filehandle.tell()
-        filehandle.seek(0) # move the cursor back to the start of the file
+        """This helper function is used to get the file size of a file"""
+        filehandle.seek(0,2) # Move the cursor to the end of the file
+        size = filehandle.tell() # Tell() will tell us the length in bytes
+        filehandle.seek(0) # Move the cursor back to the start of the file
         return size
+
+    def decodeErrorMessage(self, message):
+        """This is used for decoding server-side errors"""
+        # The error message consists of an error code and an error message. Convert all to strings
+        # and return them
+        return str(message[2]) + str(message[3]) + " " + message[4:-2].decode("ascii")
 
     class TftpException(Exception):
         """Base class for raising custom TFTP exceptions"""
