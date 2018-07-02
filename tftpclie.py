@@ -287,9 +287,11 @@ class TftpComm:
         # Show possible errors to the user
         except ValueError:
             messagebox.showerror("Input error", ip + " is not a valid IP")
+            doneCallback(0, 0, 0)
             return
         except TypeError as e:
             messagebox.showerror("Error", str(e))
+            doneCallback(0, 0, 0)
             return
 
         # Set file options for either reading or writing
@@ -299,7 +301,12 @@ class TftpComm:
             fileOptions = "rb"
 
         # Open file
-        filehandle = open(localFilename, fileOptions)
+        try:
+            filehandle = open(localFilename, fileOptions)
+        except:
+            messagebox.showerror("Error", "Could not open file")
+            doneCallback(0, 0, 0)
+            return
 
         # print(''.join(['\\x%02x' % b for b in message])) # Use this to print bytes in hex
 
